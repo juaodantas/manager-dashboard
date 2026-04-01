@@ -1,0 +1,12 @@
+{
+  "extends": "@manager/tsconfig/nextjs.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"],
+      "@manager/domain": ["../../packages/domain/src/index.ts"]
+    }
+  },
+  "include": ["src", "next.config.ts", "middleware.ts"],
+  "exclude": ["node_modules"]
+}
