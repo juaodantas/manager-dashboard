@@ -18,16 +18,15 @@ import { DeleteServiceUseCase } from '../../application/use-cases/service/delete
 
 const tokenStorage = new LocalStorageToken()
 
-// authRepo is created after http to avoid circular dependency.
-// onRefresh is a late-bound closure so authRepo can be referenced before http is fully wired.
-let authRepo: AuthHttpRepository
+const authRepoRef: { repo: AuthHttpRepository | null } = { repo: null }
 
 const http = createAxiosInstance(tokenStorage, () => {
-  const refreshUseCase = new RefreshTokenUseCase(authRepo, tokenStorage)
+  const refreshUseCase = new RefreshTokenUseCase(authRepoRef.repo!, tokenStorage)
   return refreshUseCase.execute()
 })
 
-authRepo = new AuthHttpRepository(http)
+authRepoRef.repo = new AuthHttpRepository(http)
+const authRepo = authRepoRef.repo
 const userRepo = new UserHttpRepository(http)
 const serviceRepo = new ServiceHttpRepository(http)
 

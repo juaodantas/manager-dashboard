@@ -22,7 +22,7 @@ jobs:
         run: npm ci
 
       - name: Build packages
-        run: npx turbo run build --filter=@manager/tsconfig
+        run: npx turbo run build 
 
       - name: Lint
         run: npx turbo run lint
