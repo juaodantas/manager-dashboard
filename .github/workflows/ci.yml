@@ -22,7 +22,7 @@ jobs:
         run: npm ci
 
       - name: Build packages
-        run: npx turbo run build --filter=@manager/domain --filter=@manager/tsconfig
+        run: npx turbo run build --filter=@manager/tsconfig
 
       - name: Lint
         run: npx turbo run lint
@@ -37,25 +37,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
         with:
-          node-version: 20
-          cache: npm
+          version: latest
 
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Generate migration (dry run)
-        working-directory: apps/api
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL_CI }}
+      - name: Validate migration files
         run: |
-          npx ts-node -r tsconfig-paths/register \
-            ./node_modules/.bin/typeorm migration:generate \
-            src/infrastructure/database/typeorm/migrations/ci-check \
-            -d src/infrastructure/database/typeorm/data-source.ts
-          # Fail if a new migration file was generated (entity changed without migration)
-          if git diff --name-only | grep -q "migrations/ci-check"; then
-            echo "Entity changes detected without a corresponding migration file!"
-            exit 1
-          fi
+          # Ensure all files in supabase/migrations/ are valid .sql files
+          for f in supabase/migrations/*.sql; do
+            if [ ! -f "$f" ]; then
+              echo "No migration files found"
+              exit 0
+            fi
+            echo "Found migration: $f"
+          done

@@ -6,8 +6,8 @@ export class UserHttpRepository implements IUserRepository {
   constructor(private readonly http: AxiosInstance) {}
 
   async findAll(): Promise<User[]> {
-    const { data } = await this.http.get<User[]>('/users')
-    return data
+    const { data } = await this.http.get<{ data: User[]; total: number; limit: number; offset: number }>('/users')
+    return data.data
   }
 
   async findById(id: string): Promise<User> {

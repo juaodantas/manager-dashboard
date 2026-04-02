@@ -36,7 +36,7 @@ export default function UsersPage() {
 
   const openEdit = (user: User) => {
     setEditing(user)
-    setForm({ name: user.name, email: user.email, password: '' })
+    setForm({ name: user.name, email: user.email as unknown as string, password: '' })
     setFormError('')
     setModalOpen(true)
   }
@@ -92,7 +92,7 @@ export default function UsersPage() {
               {users.map((user) => (
                 <tr key={user.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3 font-medium text-gray-900">{user.name}</td>
-                  <td className="px-4 py-3 text-gray-700">{user.email}</td>
+                  <td className="px-4 py-3 text-gray-700">{user.email as unknown as string}</td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex justify-end gap-2">
                       <Button variant="ghost" size="sm" onClick={() => openEdit(user)}>

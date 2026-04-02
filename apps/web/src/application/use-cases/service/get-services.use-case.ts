@@ -4,7 +4,12 @@ import type { IServiceRepository } from '../../../domain/repositories/service.re
 export class GetServicesUseCase {
   constructor(private readonly serviceRepo: IServiceRepository) {}
 
-  async getAll(params?: { status?: string; clienteId?: string }): Promise<{ servicos: Service[]; count: number }> {
+  async getAll(params?: {
+    status?: string
+    clienteId?: string
+    limit?: number
+    offset?: number
+  }): Promise<{ servicos: Service[]; total: number; limit: number; offset: number }> {
     return this.serviceRepo.findAll(params)
   }
 

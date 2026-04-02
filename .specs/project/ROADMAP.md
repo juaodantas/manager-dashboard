@@ -1,114 +1,80 @@
 # Roadmap
 
-**Current Milestone:** M1 — Monorepo Foundation
-**Status:** Planning
+**Current Milestone:** M6 — Deploy & Produção
+**Status:** Pronto para deploy
 
 ---
 
-## M1 — Monorepo Foundation
+## M1 — Monorepo Foundation ✅
 
-**Goal:** Repositório reestruturado como Turborepo com apps e packages configurados, buildando corretamente.
-**Target:** Apps existentes migrados para estrutura `apps/`, packages compartilhados criados, `turbo build` funcional.
-
-### Features
-
-**Turborepo Setup** — PLANNED
-- Configurar `turbo.json` com pipelines (build, dev, lint, test)
-- Configurar root `package.json` com workspaces
-- Criar `packages/tsconfig` com configs base
-- Criar `packages/domain` com tipos compartilhados
-
-**Migrar manager-api → apps/api** — PLANNED
-- Mover código para `apps/api/`
-- Adaptar `package.json` para workspace
-- Remover dependências AWS/Serverless
-
-**Migrar manager-front → apps/web (Next.js)** — PLANNED
-- Criar novo app Next.js em `apps/web/`
-- Migrar componentes e lógica existentes
+**Goal:** Repositório reestruturado como Turborepo com apps e packages configurados.
+**Status:** Concluído
 
 ---
 
-## M2 — Backend Clean Architecture + PostgreSQL
+## M2 — Backend Clean Architecture + PostgreSQL ✅ (parcial)
 
-**Goal:** API com Clean Architecture completa, PostgreSQL via TypeORM, rodando no Railway.
-**Target:** Todos os endpoints de serviços funcionando com nova arquitetura + banco PostgreSQL.
-
-### Features
-
-**Domain Layer** — PLANNED
-- Entidades puras (User, Service)
-- Interfaces de repositório (portas)
-- Domain exceptions
-
-**Application Layer** — PLANNED
-- Use cases para User (CRUD)
-- Use cases para Service (CRUD)
-- Auth port interface
-
-**Infrastructure Layer** — PLANNED
-- TypeORM entities (ORM-entities separadas do domínio)
-- TypeORM repositories (implementam portas do domínio)
-- NestJS modules conectando tudo
-- Controllers + DTOs
-
-**Auth Backend** — PLANNED
-- Endpoint POST /auth/login
-- Endpoint POST /auth/register
-- JWT strategy + AuthGuard
-- Proteção dos endpoints existentes
-
-**Migrations & Seeds** — PLANNED
-- Migration inicial (users + services tables)
-- Seed de dados de exemplo
+**Goal:** API com Clean Architecture completa, PostgreSQL, rodando com NestJS/Railway.
+**Status:** Implementado — sendo substituído pela M5
 
 ---
 
-## M3 — Frontend Clean Architecture (Next.js)
+## M3 — Frontend Clean Architecture (Next.js) ✅
 
 **Goal:** App Next.js com Clean Architecture, conectado ao backend, com auth e CRUD completo.
-**Target:** Usuário consegue fazer login, gerenciar serviços e usuários.
+**Status:** Concluído
 
-### Features
+### Entregues
 
-**Domain Layer (Frontend)** — PLANNED
-- Entidades e repositórios (interfaces)
-- Value objects (Email)
-
-**Application Layer (Frontend)** — PLANNED
-- Use cases de User e Auth
-- Use cases de Service
-
-**Infrastructure Layer (Frontend)** — PLANNED
-- HTTP repositories (fetch/axios)
-- LocalStorage token adapter
-- DI container
-
-**Presentation Layer** — PLANNED
-- Páginas: Login, Register
-- Páginas: Users (list, create, edit, delete)
-- Páginas: Services (list, create, edit, delete)
-- Components UI reutilizáveis
-- Hooks como cola entre use cases e componentes
-- Auth context
+- Domain layer: entidades, repositórios (interfaces), value objects
+- Application layer: use cases de auth (login, logout, register, refresh-token), services (get), validation schemas (Zod)
+- Infrastructure layer: HTTP repositories (Axios), LocalStorage token adapter, DI container
+- Presentation layer: páginas login, dashboard, users, services; hooks; auth context
+- Testes: 8 testes unitários com Vitest (LoginUseCase, GetServicesUseCase)
 
 ---
 
-## M4 — CI/CD & Deploy
+## M4 — CI/CD & Deploy ✅
 
-**Goal:** Pipeline automatizado com deploy contínuo em Railway e Vercel.
-**Target:** Push para main faz deploy automático de api e web.
+**Goal:** Pipeline automatizado com deploy contínuo em Supabase (api) e Vercel (web).
+**Status:** Concluído
 
-### Features
+### Entregues
 
-**GitHub Actions — API (Railway)** — PLANNED
-- Workflow de CI (lint, test, build)
-- Workflow de CD (deploy para Railway)
-- Execução de migrations pós-deploy
+- `ci.yml` — lint, test, build (PR e push para main)
+- `deploy-api.yml` — `supabase db push` + `supabase functions deploy api` no push para main
+- `deploy-web.yml` — deploy Vercel no push para main
 
-**GitHub Actions — Web (Vercel)** — PLANNED
-- Workflow de CI (lint, type-check, build)
-- Deploy automático via Vercel CLI ou integração nativa
+---
+
+## M5 — API Migration: NestJS → Hono + Supabase ✅
+
+**Goal:** Substituir a API NestJS/Railway por uma Supabase Edge Function com Hono + SQL direto.
+**Status:** Concluído
+
+### Entregues
+
+- Supabase CLI + migrations SQL (`supabase/migrations/`)
+- Edge Function Hono com routes `/auth`, `/users`, `/services`
+- JWT middleware, repositórios SQL direto (postgresjs Deno)
+- CI/CD reescrito: `deploy-api.yml` com `supabase db push` + `supabase functions deploy`
+- `apps/api/` (NestJS) e `packages/domain/` removidos do monorepo
+- Domain movido para `supabase/functions/_shared/domain/` — fonte única da verdade acessível pela edge function e pelo frontend via tsconfig alias
+
+---
+
+## M6 — Deploy & Produção ← CURRENT
+
+**Goal:** Configurar projeto Supabase + secrets e fazer primeiro deploy em produção.
+**Target:** API e web acessíveis em URLs públicas com deploy automático no push para main.
+
+### Checklist
+
+- [ ] Criar projeto no Supabase e obter `project_ref`
+- [ ] Configurar secrets no GitHub: `SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROJECT_REF`, `SUPABASE_DB_PASSWORD`, `DATABASE_URL`, `JWT_SECRET`
+- [ ] Configurar secrets Vercel: `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`
+- [ ] Definir `NEXT_PUBLIC_API_URL` no projeto Vercel
+- [ ] Validar deploy end-to-end
 
 ---
 
@@ -117,5 +83,6 @@
 - packages/ui — design system compartilhado com Storybook
 - RBAC — sistema de roles e permissões
 - Refresh token rotation
-- Rate limiting na API
+- Rate limiting na API (Hono middleware)
 - Observabilidade (OpenTelemetry)
+- Testes unitários para `_shared/domain/` (Vitest ou deno test)

@@ -1,47 +1,54 @@
 # Tech Stack
 
 **Analyzed:** 2026-03-31
+**Updated:** 2026-04-02
 
 ## Core
 
-- Language: TypeScript ~6.0 (frontend) / ^5.x (backend)
-- Package manager: npm (both apps)
-- Runtime: Node.js
+- Language: TypeScript ~5.9 (frontend) / TypeScript via Deno (backend)
+- Package manager: npm (frontend/packages), Deno (backend edge function)
+- Runtime: Node.js (web), Deno (api edge function)
 
-## Frontend (manager-front — Vite/React, será migrado para Next.js)
+## Frontend (apps/web — Next.js)
 
-- Framework: React 19.2 + Vite 6
-- Styling: TailwindCSS v4 (via @tailwindcss/vite plugin)
-- State Management: Zustand ^5.0
-- Data Fetching: @tanstack/react-query ^5.96
+- Framework: Next.js 15 (App Router)
+- Styling: TailwindCSS v4
+- State Management: @tanstack/react-query ^5.96 (server state)
 - HTTP Client: Axios ^1.14
-- Routing: react-router-dom ^7.13
-- Icons: lucide-react ^1.7
-- Build: Vite + tsc
+- Icons: lucide-react
+- Validation: Zod ^3.23
+- Build: Next.js + tsc
 
-## Backend (manager-api — NestJS, mantido)
+## Backend (supabase/functions/api — Hono + Deno)
 
-- Framework: NestJS ^11 (Express adapter)
-- Database: DynamoDB (AWS SDK v3 — `@aws-sdk/client-dynamodb`, `@aws-sdk/lib-dynamodb`)
-- ORM: Nenhum — interação direta com DynamoDB via DocumentClient
-- Deploy: Serverless Framework v4 + AWS Lambda (`@vendia/serverless-express`)
-- API Docs: @nestjs/swagger ^11 + swagger-ui-express
-- HTTP Client: @nestjs/axios ^4
+- Framework: **Hono** (edge-native, Deno-compatible, Fastify-like DX)
+- Runtime: **Deno** (Supabase Edge Functions)
+- Database: **Supabase PostgreSQL** (via `postgresjs` Deno module)
+- ORM: **Nenhum** — SQL direto via `postgres` (sem TypeORM)
+- Auth: JWT custom (jose/djwt — Deno-compatible), bcryptjs via Deno
+- Migrations: **Supabase CLI** — arquivos `.sql` em `supabase/migrations/`
+- Deploy: **Supabase Edge Functions** (`supabase functions deploy`)
+
+## Migrations
+
+- Ferramenta: Supabase CLI (`supabase migration new`, `supabase db push`)
+- Formato: SQL puro em `supabase/migrations/<timestamp>_<nome>.sql`
+- Histórico: controlado pela tabela `supabase_migrations` no próprio banco
 
 ## Testing
 
-- Unit: Jest ^30 (ambos os projetos)
-- E2E: Jest e2e (backend, `test/jest-e2e.json`)
-- Frontend: sem framework de teste configurado atualmente
+- Unit: Vitest ^2 (apps/web)
+- E2E: Frontend — sem framework configurado atualmente
+- Backend: sem testes automatizados na v1 (edge functions)
 
-## External Services (estado atual)
+## External Services
 
-- Cloud: AWS (Lambda, DynamoDB, API Gateway via Serverless)
-- IaC: serverless.yml (Serverless Framework)
+- Cloud: **Supabase** (Edge Functions + PostgreSQL)
+- Frontend Deploy: **Vercel**
+- CI/CD: GitHub Actions
 
 ## Development Tools
 
-- Linter: ESLint ^9 (flat config)
+- Linter: ESLint ^9 (flat config) — apps/web e packages
 - Formatter: Prettier ^3
-- Compiler (backend): @swc/core para builds rápidos
-- CLI: @nestjs/cli ^11
+- Supabase CLI: gerenciamento de migrations e deploy de functions

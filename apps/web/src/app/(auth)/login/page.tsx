@@ -5,20 +5,35 @@ import Link from 'next/link'
 import { useAuth } from '../../../presentation/contexts/auth.context'
 import { Input } from '../../../presentation/components/ui/Input'
 import { Button } from '../../../presentation/components/ui/Button'
+import { loginSchema } from '../../../application/validation/auth.schemas'
 
 export default function LoginPage() {
   const { login } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [errors, setErrors] = useState<{ email?: string; password?: string }>({})
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
+    setErrors({})
+
+    const result = loginSchema.safeParse({ email, password })
+    if (!result.success) {
+      const fieldErrors: { email?: string; password?: string } = {}
+      for (const issue of result.error.issues) {
+        const key = issue.path[0] as 'email' | 'password'
+        fieldErrors[key] = issue.message
+      }
+      setErrors(fieldErrors)
+      return
+    }
+
     setLoading(true)
     try {
-      await login(email, password)
+      await login(result.data.email, result.data.password)
     } catch {
       setError('Email ou senha inválidos.')
     } finally {
@@ -46,6 +61,8 @@ export default function LoginPage() {
             onChange={(e) => setPassword(e.target.value)}
             required
           />
+          {errors.email && <p className="-mt-2 text-xs text-red-600">{errors.email}</p>}
+          {errors.password && <p className="-mt-2 text-xs text-red-600">{errors.password}</p>}
           {error && <p className="text-sm text-red-600">{error}</p>}
           <Button type="submit" loading={loading} className="mt-2 w-full">
             Entrar

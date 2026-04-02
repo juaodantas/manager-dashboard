@@ -8,7 +8,8 @@ export class LoginUseCase {
   ) {}
 
   async execute(email: string, password: string): Promise<void> {
-    const { access_token } = await this.authRepo.login(email, password)
+    const { access_token, refresh_token } = await this.authRepo.login(email, password)
     this.tokenPort.setToken(access_token)
+    this.tokenPort.setRefreshToken(refresh_token)
   }
 }

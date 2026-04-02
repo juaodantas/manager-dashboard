@@ -1,75 +1,48 @@
 # Codebase Concerns
 
 **Analyzed:** 2026-03-31
-
----
-
-## 🔴 CRÍTICO
-
-### C01 — Ausência total de autenticação no backend
-
-**Evidência:** `manager-api/src/main.ts` — sem guards, sem JWT, sem middleware de auth. Todos os endpoints públicos.
-**Impacto:** Qualquer pessoa com a URL da API pode criar, editar e deletar serviços.
-**Fix:** Implementar JWT guard no NestJS + endpoint de login. Cobrir todos os módulos com `AuthGuard`.
-
-### C02 — main.ts acoplado ao Lambda (sem bootstrap local)
-
-**Evidência:** `manager-api/src/main.ts` — exporta apenas `handler` para Lambda. Sem `bootstrap()` para rodar localmente com `app.listen()`.
-**Impacto:** Desenvolver localmente exige `serverless-offline`, adicionando fricção. Migração para Railway requer refactor completo do entry point.
-**Fix:** Separar lógica de app bootstrap do adapter Lambda. Criar `main.ts` padrão NestJS e `lambda.ts` como adapter.
+**Updated:** 2026-04-02
 
 ---
 
 ## 🟡 MODERADO
 
-### C03 — DynamoDB com Scan para todas as queries
+### C12 — Sem desenvolvimento local unificado
 
-**Evidência:** `servicos.repository.ts` linhas 52-99 — `findAll()`, `findByStatus()`, `findByClienteId()` usam `ScanCommand` (full table scan).
-**Impacto:** Performance degradará linearmente com crescimento da tabela. Custo AWS aumenta proporcionalmente.
-**Fix:** Migração planejada para PostgreSQL elimina este concern.
+**Evidência:** `apps/web` roda via `npm run dev`, mas a Edge Function requer `supabase functions serve` + `supabase start` (Docker). Não há um único comando para subir tudo.
+**Impacto:** Fricção no setup local — dois terminais e Docker obrigatório para desenvolvimento completo.
+**Fix:** Adicionar script `dev:all` no `package.json` raiz orquestrando `supabase start`, `supabase functions serve` e `turbo dev --filter=apps/web` via `concurrently`.
 
-### C04 — Frontend sem arquitetura de camadas
+### C13 — Edge Functions sem testes automatizados
 
-**Evidência:** `manager-front/src/services/api.ts` — lógica HTTP misturada; hooks como `useServices.ts` contêm lógica de negócio, estado e side-effects juntos.
-**Impacto:** Dificulta testes unitários, reuso de lógica e manutenção à medida que o app cresce.
-**Fix:** Migração planejada para Clean Architecture no frontend com casos de uso separados.
-
-### C05 — Domínio duplicado entre frontend e backend
-
-**Evidência:** `manager-api/src/servicos/entities/servico.entity.ts` e `manager-front/src/types/service.ts` definem tipos similares independentemente.
-**Impacto:** Alterações na entidade precisam ser feitas em dois lugares. Risk de divergência.
-**Fix:** Pacote `packages/domain` compartilhado no monorepo Turborepo.
-
-### C06 — Ausência de módulo de usuários
-
-**Evidência:** Nenhum arquivo de user no backend ou frontend.
-**Impacto:** Sem gerenciamento de usuários, auth não tem base para funcionar corretamente.
-**Fix:** Implementar módulo `users` como parte desta refatoração.
+**Evidência:** Deno tem suporte nativo a testes (`deno test`), mas nenhum teste foi configurado para a edge function.
+**Impacto:** Regressões não detectadas automaticamente no backend.
+**Fix (pós-v1):** Adicionar testes unitários com `deno test` para repositories e use cases. Integrar no CI.
 
 ---
 
 ## 🟢 BAIXO
 
-### C07 — Vite/React no frontend (target é Next.js)
+### C14 — Sem tipagem compartilhada entre edge function e web para payloads HTTP
 
-**Evidência:** `manager-front/package.json` — Vite 6 + React Router.
-**Impacto:** SSR, SEO e App Router do Next.js não disponíveis. Migração necessária.
-**Fix:** Recriar o frontend como app Next.js na pasta `apps/web/`.
+**Evidência:** Os tipos de request/response da API (DTOs) são definidos independentemente no Hono e no frontend Axios.
+**Impacto:** Divergência silenciosa de contratos HTTP.
+**Fix (pós-v1):** Publicar tipos de contrato da API no pacote `@manager/domain` ou criar `packages/api-types` dedicado.
 
-### C08 — Sem configuração de CI/CD
+---
 
-**Evidência:** Sem `.github/workflows/` no repositório.
-**Impacto:** Deploy manual, sem validação automatizada em PRs.
-**Fix:** GitHub Actions para deploy automático na Vercel (web) e Railway (api).
+## ✅ RESOLVIDOS
 
-### C09 — Sem testes no frontend
-
-**Evidência:** `manager-front/package.json` — sem vitest, jest ou testing-library.
-**Impacto:** Regressões sem detecção automática.
-**Fix:** Configurar Vitest + Testing Library no app Next.js.
-
-### C10 — DTOs agrupados num arquivo único
-
-**Evidência:** `manager-api/src/servicos/dto/dto.ts` — CreateServicoDto e UpdateServicoDto no mesmo arquivo.
-**Impacto:** Arquivo crescerá com mais DTOs. Convençao difere do padrão NestJS.
-**Fix:** Separar em arquivos individuais na refatoração.
+| ID  | Concern original                              | Resolução                                          |
+|-----|-----------------------------------------------|----------------------------------------------------|
+| C01 | Ausência total de autenticação no backend     | JWT customizado via Hono middleware                |
+| C02 | main.ts acoplado ao Lambda                    | Edge Function com entry point Deno/Hono padrão     |
+| C03 | DynamoDB com Scan para todas as queries       | Migrado para PostgreSQL com SQL direto             |
+| C04 | Frontend sem arquitetura de camadas           | Clean Architecture implementada no apps/web        |
+| C05 | Domínio duplicado entre frontend e backend    | `_shared/domain/` como fonte única; web resolve via tsconfig alias |
+| C11 | packages/domain inacessível no Deno Edge Function | Removido symlink quebrado; domain movido para `supabase/functions/_shared/domain/` |
+| C06 | Ausência de módulo de usuários                | CRUD de Users implementado                         |
+| C07 | Vite/React no frontend                        | Migrado para Next.js 15 App Router                 |
+| C08 | Sem configuração de CI/CD                     | GitHub Actions configurado                         |
+| C09 | Sem testes no frontend                        | Vitest configurado em apps/web — 8 testes unitários (LoginUseCase, GetServicesUseCase) |
+| C10 | DTOs agrupados num arquivo único              | DTOs separados por entidade                        |

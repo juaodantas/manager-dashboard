@@ -1,7 +1,7 @@
 # Monorepo Boilerplate Design
 
 **Spec:** `.specs/features/monorepo-boilerplate/spec.md`
-**Status:** Draft
+**Status:** Updated — Backend migrado para Hono + Supabase Edge Functions
 
 ---
 
@@ -11,24 +11,23 @@
 graph TD
     subgraph Monorepo[Turborepo Root]
         subgraph apps
-            API[apps/api — NestJS]
             WEB[apps/web — Next.js]
         end
-        subgraph packages
-            DOM[packages/domain]
-            TSC[packages/tsconfig]
+            subgraph supabase
+            FN[supabase/functions/api — Hono]
+            MIG[supabase/migrations — SQL]
         end
     end
 
-    WEB -->|import types| DOM
-    API -->|import types| DOM
-    API -->|extends| TSC
-    WEB -->|extends| TSC
+    WEB -->|"@manager/domain (tsconfig alias)"| SHARED[_shared/domain]
+    FN -->|"path relativo"| SHARED
 
-    WEB -->|HTTP REST + JWT| API
-    API -->|TypeORM| PG[(PostgreSQL Railway)]
+    WEB -->|HTTP REST + JWT| FN
+    FN -->|SQL direto| PG[(Supabase PostgreSQL)]
+    MIG -->|supabase db push| PG
 
-    GHA[GitHub Actions] -->|deploy| Railway[Railway — API]
+    GHA[GitHub Actions] -->|supabase functions deploy| Supabase[Supabase Edge]
+    GHA -->|supabase db push| PG
     GHA -->|deploy| Vercel[Vercel — Web]
 ```
 
@@ -38,222 +37,224 @@ graph TD
 
 ```
 /
+├── supabase/
+│   ├── config.toml
+│   ├── migrations/
+│   │   ├── 20240101000000_initial.sql
+│   │   └── 20240102000000_add-refresh-tokens.sql
+│   └── functions/
+│       ├── _shared/
+│       │   └── domain/             ← fonte da verdade (entidades, VOs, exceções)
+│       └── api/                    ← Hono Edge Function (Deno)
 ├── apps/
-│   ├── api/                    ← NestJS (renomeado de manager-api)
-│   └── web/                    ← Next.js 15 (novo, substitui manager-front)
-├── packages/
-│   ├── domain/                 ← tipos e interfaces compartilhadas
-│   └── tsconfig/               ← tsconfig base
+│   └── web/                        ← Next.js 15
 ├── .github/
 │   └── workflows/
 │       ├── ci.yml
-│       ├── deploy-api.yml
+│       ├── deploy-api.yml          ← supabase db push + functions deploy
 │       └── deploy-web.yml
 ├── turbo.json
-└── package.json                ← root (workspaces)
+└── package.json                    ← root workspaces (apps/web)
 ```
 
 ---
 
-## packages/domain — Design
+## Domain Compartilhado — Design
 
-**Purpose:** Tipos compartilhados entre api e web. Sem dependências externas (sem React, sem NestJS).
+**Localização:** `supabase/functions/_shared/domain/` (fonte única da verdade)
 
-```typescript
-// packages/domain/src/entities/user.entity.ts
-export interface User {
-  id: string
-  name: string
-  email: string
-  createdAt: Date
-  updatedAt: Date
-}
+**Acesso:**
+- Edge Function: importação direta via path relativo (`../_shared/domain/`)
+- Frontend: alias `@manager/domain` em `apps/web/tsconfig.json` → `../../supabase/functions/_shared/domain/index.ts`
 
-// packages/domain/src/entities/service.entity.ts
-export interface Service {
-  id: string
-  cliente: Cliente
-  tipo: TipoServico
-  status: StatusServico
-  // ... (preserva campos existentes de servico.entity.ts)
-  createdAt: Date
-  updatedAt: Date
-}
-```
-
-**Exports:** `@manager/domain` — entities, enums, value objects
+**Exports:** entities (`User`, `Service`), value objects (`Email`), exceptions (`DomainException`)
 
 ---
 
-## Backend (apps/api) — Clean Architecture
+## Backend (supabase/functions/api) — Hono + Deno
 
-### Estrutura de Camadas
+### Estrutura
 
 ```
-src/
-├── domain/                        ← puro TypeScript, zero NestJS
-│   ├── entities/
-│   │   ├── user.entity.ts         ← classe com lógica de domínio (ex: hashPassword)
-│   │   └── service.entity.ts      ← migrado de servicos/entities/
-│   ├── repositories/
-│   │   ├── user.repository.ts     ← interface IUserRepository
-│   │   └── service.repository.ts  ← interface IServiceRepository
-│   └── exceptions/
-│       └── domain.exception.ts    ← DomainException base
-│
-├── application/
-│   ├── use-cases/
-│   │   ├── user/
-│   │   │   ├── create-user.use-case.ts
-│   │   │   ├── update-user.use-case.ts
-│   │   │   ├── delete-user.use-case.ts
-│   │   │   └── get-user.use-case.ts
-│   │   └── service/
-│   │       ├── create-service.use-case.ts
-│   │       ├── update-service.use-case.ts
-│   │       ├── delete-service.use-case.ts
-│   │       └── get-service.use-case.ts
-│   └── ports/
-│       └── auth.port.ts           ← interface IAuthPort (generateToken, validateToken)
-│
-├── infrastructure/
-│   ├── database/
-│   │   └── typeorm/
-│   │       ├── entities/
-│   │       │   ├── user.orm-entity.ts     ← @Entity() com decorators TypeORM
-│   │       │   └── service.orm-entity.ts
-│   │       ├── repositories/
-│   │       │   ├── user.typeorm-repository.ts   ← implementa IUserRepository
-│   │       │   └── service.typeorm-repository.ts
-│   │       └── migrations/
-│   │           └── [timestamp]-initial.ts
-│   └── modules/
-│       ├── user/
-│       │   ├── user.module.ts     ← registra token USER_REPOSITORY
-│       │   ├── user.controller.ts
-│       │   └── user.dto.ts
-│       ├── service/
-│       │   ├── service.module.ts
-│       │   ├── service.controller.ts
-│       │   └── service.dto.ts
-│       └── auth/
-│           ├── auth.module.ts
-│           ├── auth.controller.ts  ← POST /auth/login, POST /auth/register
-│           ├── auth.service.ts     ← implementa IAuthPort
-│           ├── jwt.strategy.ts     ← passport-jwt strategy
-│           └── auth.guard.ts       ← JwtAuthGuard
-│
-└── app.module.ts
+supabase/functions/api/
+├── index.ts                   ← entry point: Hono app + serve()
+├── db.ts                      ← instância postgres (postgresjs Deno)
+├── routes/
+│   ├── auth.ts                ← POST /auth/register, POST /auth/login
+│   ├── users.ts               ← CRUD /users (protegido)
+│   └── services.ts            ← CRUD /services (protegido)
+├── repositories/
+│   ├── user.repository.ts     ← SQL direto
+│   └── service.repository.ts
+├── use-cases/
+│   ├── user/
+│   │   ├── create-user.ts
+│   │   ├── get-user.ts
+│   │   ├── update-user.ts
+│   │   └── delete-user.ts
+│   └── service/
+│       ├── create-service.ts
+│       ├── get-service.ts
+│       ├── update-service.ts
+│       └── delete-service.ts
+├── middleware/
+│   └── auth.ts                ← Hono JWT middleware
+└── domain/                    ← cópia dos tipos de @manager/domain
+    ├── entities/
+    │   ├── user.entity.ts
+    │   └── service.entity.ts
+    └── exceptions/
+        └── domain.exception.ts
 ```
 
-### Injeção de Dependência — Tokens Simbólicos
+### Entry Point
 
 ```typescript
-// Tokens para o container NestJS
-export const USER_REPOSITORY = Symbol('USER_REPOSITORY')
-export const SERVICE_REPOSITORY = Symbol('SERVICE_REPOSITORY')
-export const AUTH_PORT = Symbol('AUTH_PORT')
+// index.ts
+import { Hono } from 'npm:hono'
+import { cors } from 'npm:hono/cors'
+import { authRoutes } from './routes/auth.ts'
+import { userRoutes } from './routes/users.ts'
+import { serviceRoutes } from './routes/services.ts'
 
-// No UserModule:
-providers: [
-  { provide: USER_REPOSITORY, useClass: UserTypeOrmRepository },
-  CreateUserUseCase,
-  GetUserUseCase,
-  // ...
-]
+const app = new Hono().basePath('/api')
+
+app.use('*', cors({ origin: Deno.env.get('CORS_ORIGIN') ?? '*' }))
+app.get('/health', (c) => c.json({ status: 'ok' }))
+app.route('/auth', authRoutes)
+app.route('/users', userRoutes)
+app.route('/services', serviceRoutes)
+
+Deno.serve(app.fetch)
 ```
 
-### Entidade de Domínio (exemplo)
+### Auth Middleware
 
 ```typescript
-// domain/entities/user.entity.ts — sem decorators NestJS/TypeORM
-export class User {
-  constructor(
-    public readonly id: string,
-    public name: string,
-    public readonly email: string,
-    public passwordHash: string,
-    public readonly createdAt: Date,
-    public updatedAt: Date,
-  ) {}
+// middleware/auth.ts
+import { jwt } from 'npm:hono/jwt'
 
-  updateProfile(name: string): void {
-    this.name = name
-    this.updatedAt = new Date()
-  }
+export const authMiddleware = jwt({
+  secret: Deno.env.get('JWT_SECRET')!,
+})
+```
+
+### Rotas protegidas
+
+```typescript
+// routes/users.ts
+import { Hono } from 'npm:hono'
+import { authMiddleware } from '../middleware/auth.ts'
+
+const users = new Hono()
+users.use('*', authMiddleware)
+
+users.get('/', async (c) => { /* GetUserUseCase.findAll() */ })
+users.get('/:id', async (c) => { /* GetUserUseCase.findById() */ })
+users.post('/', async (c) => { /* CreateUserUseCase.execute() */ })
+users.patch('/:id', async (c) => { /* UpdateUserUseCase.execute() */ })
+users.delete('/:id', async (c) => { /* DeleteUserUseCase.execute() */ })
+
+export const userRoutes = users
+```
+
+### Database Client
+
+```typescript
+// db.ts
+import postgres from 'https://deno.land/x/postgresjs/mod.js'
+
+const sql = postgres(Deno.env.get('DATABASE_URL')!)
+export default sql
+```
+
+### Repository (exemplo)
+
+```typescript
+// repositories/user.repository.ts
+import sql from '../db.ts'
+import type { User } from '../../_shared/domain/entities/user.entity.ts'
+
+export const UserRepository = {
+  async findByEmail(email: string): Promise<User | null> {
+    const [row] = await sql`SELECT * FROM users WHERE email = ${email}`
+    return row ? toUser(row) : null
+  },
+  async findById(id: string): Promise<User | null> {
+    const [row] = await sql`SELECT * FROM users WHERE id = ${id}`
+    return row ? toUser(row) : null
+  },
+  async create(data: Pick<User, 'name' | 'email' | 'passwordHash'>): Promise<User> {
+    const [row] = await sql`
+      INSERT INTO users (name, email, password_hash)
+      VALUES (${data.name}, ${data.email}, ${data.passwordHash})
+      RETURNING *
+    `
+    return toUser(row)
+  },
+  async update(id: string, data: Partial<Pick<User, 'name'>>): Promise<User> {
+    const [row] = await sql`
+      UPDATE users SET name = ${data.name}, updated_at = now()
+      WHERE id = ${id} RETURNING *
+    `
+    return toUser(row)
+  },
+  async delete(id: string): Promise<void> {
+    await sql`DELETE FROM users WHERE id = ${id}`
+  },
 }
-```
 
-### ORM Entity (exemplo)
-
-```typescript
-// infrastructure/database/typeorm/entities/user.orm-entity.ts
-@Entity('users')
-export class UserOrmEntity {
-  @PrimaryGeneratedColumn('uuid') id: string
-  @Column() name: string
-  @Column({ unique: true }) email: string
-  @Column() passwordHash: string
-  @CreateDateColumn() createdAt: Date
-  @UpdateDateColumn() updatedAt: Date
-}
-```
-
-### Use Case (exemplo)
-
-```typescript
-// application/use-cases/user/create-user.use-case.ts
-export class CreateUserUseCase {
-  constructor(
-    @Inject(USER_REPOSITORY) private readonly userRepo: IUserRepository,
-    @Inject(AUTH_PORT) private readonly authPort: IAuthPort,
-  ) {}
-
-  async execute(dto: CreateUserDto): Promise<{ user: User; token: string }> {
-    const existing = await this.userRepo.findByEmail(dto.email)
-    if (existing) throw new ConflictException('Email already in use')
-
-    const passwordHash = await this.authPort.hashPassword(dto.password)
-    const user = new User(uuid(), dto.name, dto.email, passwordHash, new Date(), new Date())
-    await this.userRepo.save(user)
-    return user
-  }
+function toUser(row: Record<string, unknown>): User {
+  return new User(
+    row.id as string,
+    row.name as string,
+    row.email as string,
+    row.password_hash as string,
+    row.created_at as Date,
+    row.updated_at as Date,
+  )
 }
 ```
 
 ### Data Models
 
-**PostgreSQL — tabela users**
-```sql
-users (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name        VARCHAR(255) NOT NULL,
-  email       VARCHAR(255) UNIQUE NOT NULL,
-  password_hash VARCHAR(255) NOT NULL,
-  created_at  TIMESTAMP DEFAULT NOW(),
-  updated_at  TIMESTAMP DEFAULT NOW()
-)
-```
+**Migration SQL** (`supabase/migrations/20240101000000_initial.sql`):
 
-**PostgreSQL — tabela services**
 ```sql
-services (
-  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  cliente_id      VARCHAR(255),
-  cliente_nome    VARCHAR(255),
-  cliente_email   VARCHAR(255),
-  tipo            VARCHAR(50),
-  status          VARCHAR(50),
-  data_inicio     DATE,
-  data_fim        DATE,
-  valor_total     DECIMAL(10,2),
-  forma_pagamento VARCHAR(50),
-  created_at      TIMESTAMP DEFAULT NOW(),
-  updated_at      TIMESTAMP DEFAULT NOW()
-)
-```
+CREATE TABLE "users" (
+  "id"            UUID NOT NULL DEFAULT gen_random_uuid(),
+  "name"          VARCHAR(255) NOT NULL,
+  "email"         VARCHAR(255) NOT NULL,
+  "password_hash" VARCHAR(255) NOT NULL,
+  "created_at"    TIMESTAMP NOT NULL DEFAULT now(),
+  "updated_at"    TIMESTAMP NOT NULL DEFAULT now(),
+  CONSTRAINT "UQ_users_email" UNIQUE ("email"),
+  CONSTRAINT "PK_users" PRIMARY KEY ("id")
+);
 
-> Nota: campos aninhados complexos (cronograma, pagamentos, documentos) serão armazenados como JSONB ou tabelas separadas — decisão a tomar na implementação da migration.
+CREATE TYPE "services_tipo_enum" AS ENUM ('OBRA_INCENDIO', 'CONSULTORIA', 'PROJETO', 'MANUTENCAO');
+CREATE TYPE "services_status_enum" AS ENUM ('EM_ANDAMENTO', 'CONCLUIDO', 'PAUSADO', 'CANCELADO');
+CREATE TYPE "services_forma_pagamento_enum" AS ENUM ('A_VISTA', 'PARCELADO', 'MENSAL');
+
+CREATE TABLE "services" (
+  "id"              UUID NOT NULL DEFAULT gen_random_uuid(),
+  "cliente"         JSONB NOT NULL,
+  "tipo"            "services_tipo_enum" NOT NULL,
+  "status"          "services_status_enum" NOT NULL,
+  "data_inicio"     DATE NOT NULL,
+  "data_fim"        DATE,
+  "valor_total"     DECIMAL(10,2) NOT NULL,
+  "forma_pagamento" "services_forma_pagamento_enum" NOT NULL,
+  "cronograma"      JSONB,
+  "pagamentos"      JSONB,
+  "documentos"      JSONB,
+  "custos_fixos"    JSONB,
+  "parcelamento"    JSONB,
+  "created_at"      TIMESTAMP NOT NULL DEFAULT now(),
+  "updated_at"      TIMESTAMP NOT NULL DEFAULT now(),
+  CONSTRAINT "PK_services" PRIMARY KEY ("id")
+);
+```
 
 ---
 
@@ -265,13 +266,13 @@ services (
 src/
 ├── domain/
 │   ├── entities/
-│   │   ├── user.entity.ts         ← re-exporta ou estende @manager/domain
+│   │   ├── user.entity.ts         ← re-exporta @manager/domain
 │   │   └── service.entity.ts
 │   ├── repositories/
 │   │   ├── user.repository.ts     ← interface IUserRepository
 │   │   └── service.repository.ts
 │   └── value-objects/
-│       └── email.vo.ts            ← Email com validação
+│       └── email.vo.ts
 │
 ├── application/
 │   ├── use-cases/
@@ -283,61 +284,33 @@ src/
 │   │       ├── login.use-case.ts
 │   │       └── logout.use-case.ts
 │   └── ports/
-│       └── auth-token.port.ts     ← interface IAuthTokenPort (getToken, setToken, clear)
+│       └── auth-token.port.ts
 │
 ├── infrastructure/
 │   ├── http/
-│   │   ├── user.http-repository.ts   ← implementa IUserRepository via axios
+│   │   ├── user.http-repository.ts
 │   │   ├── service.http-repository.ts
 │   │   └── auth.http-repository.ts
 │   ├── storage/
-│   │   └── local-storage-token.ts    ← implementa IAuthTokenPort
+│   │   └── local-storage-token.ts
 │   └── di/
-│       └── container.ts              ← monta as injeções (factory functions)
+│       └── container.ts
 │
 └── presentation/
     ├── components/
-    │   ├── ui/                        ← Button, Input, Modal, Select (migrados)
-    │   └── shared/                    ← Layout, ServiceTable, ServiceForm, etc.
-    ├── app/                           ← Next.js App Router
-    │   ├── (auth)/
-    │   │   ├── login/page.tsx
-    │   │   └── register/page.tsx
-    │   ├── (dashboard)/
-    │   │   ├── layout.tsx             ← layout autenticado com redirect guard
-    │   │   ├── page.tsx               ← Dashboard
-    │   │   ├── services/page.tsx
-    │   │   └── users/page.tsx
-    │   └── layout.tsx                 ← root layout
+    │   ├── ui/
+    │   └── shared/
+    ├── app/
+    │   ├── (auth)/login/page.tsx
+    │   ├── (auth)/register/page.tsx
+    │   └── (dashboard)/
+    │       ├── layout.tsx
+    │       ├── page.tsx
+    │       ├── services/page.tsx
+    │       └── users/page.tsx
     ├── hooks/
-    │   ├── useCreateUser.ts           ← cola LoginUseCase → componente
-    │   ├── useLogin.ts
-    │   └── useServices.ts
     └── contexts/
         └── auth.context.tsx
-```
-
-### DI Container (Frontend)
-
-```typescript
-// infrastructure/di/container.ts
-const tokenStorage = new LocalStorageToken()
-const userRepo = new UserHttpRepository(tokenStorage)
-const serviceRepo = new ServiceHttpRepository(tokenStorage)
-
-export const loginUseCase = new LoginUseCase(userRepo, tokenStorage)
-export const getUsersUseCase = new GetUsersUseCase(userRepo)
-// ...
-```
-
-### Route Guard (Next.js App Router)
-
-```typescript
-// presentation/app/(dashboard)/layout.tsx
-export default function DashboardLayout({ children }) {
-  // Verificação do token via middleware.ts ou client-side redirect
-  // middleware.ts na raiz do app cuida do redirect server-side
-}
 ```
 
 ---
@@ -346,51 +319,32 @@ export default function DashboardLayout({ children }) {
 
 ### `.github/workflows/ci.yml`
 - Trigger: push/PR em qualquer branch
-- Jobs: lint, type-check, build (paralelos por app)
+- Jobs: lint, build packages, test
+- **Removido:** job `check-migrations` (TypeORM dry-run)
 
 ### `.github/workflows/deploy-api.yml`
-- Trigger: push em `main`
-- Jobs: build → deploy Railway → run migrations
+- Trigger: push em `main` com mudanças em `supabase/**` ou `packages/**`
+- Steps:
+  1. Setup Supabase CLI
+  2. `supabase db push --linked` — aplica migrations pendentes
+  3. `supabase functions deploy api` — deploy da edge function
 
 ### `.github/workflows/deploy-web.yml`
-- Trigger: push em `main`
-- Jobs: build → deploy Vercel (via `vercel --prod`)
-
----
-
-## Code Reuse Analysis
-
-### Componentes existentes para migrar
-
-| Componente                           | Origem                              | Destino                                  |
-|--------------------------------------|-------------------------------------|------------------------------------------|
-| ServiceTable, ServiceForm, Filters   | `manager-front/src/components/`     | `apps/web/src/presentation/components/shared/` |
-| Button, Input, Modal, Select         | `manager-front/src/components/ui/`  | `apps/web/src/presentation/components/ui/` |
-| Servico entity + enums               | `manager-api/src/servicos/entities/`| `apps/api/src/domain/entities/` + `packages/domain/` |
-| ServicosController (endpoints HTTP)  | `manager-api/src/servicos/`         | `apps/api/src/infrastructure/modules/service/` |
-
-### O que é reescrito
-
-| O que                   | Por quê                                             |
-|-------------------------|-----------------------------------------------------|
-| ServicosRepository      | DynamoDB → TypeORM PostgreSQL                       |
-| main.ts                 | Lambda handler → NestJS bootstrap padrão            |
-| manager-front/           | Vite/React → Next.js App Router                    |
-| Hooks (useServices)     | Lógica extraída para use cases, hooks viram "cola"  |
-| services/api.ts         | Substituído por infrastructure/http repositories    |
+- Trigger: push em `main` com mudanças em `apps/web/**` ou `packages/**`
+- Steps: build → `vercel --prod`
 
 ---
 
 ## Error Handling Strategy
 
-| Error Scenario                  | Backend Handling                       | Frontend Impact                  |
+| Error Scenario                  | Backend (Hono)                         | Frontend Impact                  |
 |---------------------------------|----------------------------------------|----------------------------------|
-| Credenciais inválidas           | 401 UnauthorizedException              | Mensagem de erro no form         |
-| Email duplicado (create user)   | 409 ConflictException                  | Mensagem "email já em uso"       |
-| Resource não encontrado         | 404 NotFoundException                  | Toast de erro                    |
-| Token inválido/expirado         | 401 (jwt strategy)                     | Redirect para /login             |
-| Validação DTO falha             | 400 ValidationPipe com detalhes        | Erros no form                    |
-| DB connection error             | 500 + log (não expõe detalhes)         | Mensagem genérica de erro        |
+| Credenciais inválidas           | `c.json({ error: 'Unauthorized' }, 401)` | Mensagem de erro no form       |
+| Email duplicado                 | `c.json({ error: 'Email in use' }, 409)` | Mensagem "email já em uso"    |
+| Resource não encontrado         | `c.json({ error: 'Not found' }, 404)`  | Toast de erro                    |
+| Token inválido/expirado         | Hono JWT middleware retorna 401        | Redirect para /login             |
+| Validação falha                 | `c.json({ error: '...', details: [] }, 400)` | Erros no form             |
+| DB error                        | `c.json({ error: 'Internal error' }, 500)` | Mensagem genérica           |
 
 ---
 
@@ -399,10 +353,14 @@ export default function DashboardLayout({ children }) {
 | Decision                              | Choice                                 | Rationale                                                   |
 |---------------------------------------|----------------------------------------|-------------------------------------------------------------|
 | Monorepo tooling                      | Turborepo                              | Padrão para TS monorepos, cache de build, pipelines claras  |
-| ORM                                   | TypeORM                                | Integração nativa NestJS, migrations, entities decoradas    |
-| Auth library                          | @nestjs/jwt + @nestjs/passport         | Ecossistema padrão NestJS para JWT                          |
+| Backend framework                     | Hono                                   | Edge-native (Deno), DX idêntico ao Fastify, TypeScript-first |
+| Backend runtime                       | Deno (Supabase Edge Functions)         | Edge sem cold start, sem custo fixo de servidor             |
+| Database access                       | postgresjs (Deno) — SQL direto         | TypeORM incompatível com Deno; SQL direto mais simples      |
+| Migrations                            | Supabase CLI — arquivos SQL            | Ecossistema único, SQL puro versionado, sem magia de ORM    |
+| Auth library                          | hono/jwt + bcryptjs (Deno)             | Sem acoplamento ao Supabase Auth, controle total            |
 | Password hashing                      | bcryptjs                               | Sem dependências nativas, simples e seguro                  |
 | Frontend framework                    | Next.js 15 App Router                  | SSR, roteamento por pasta, ecosystem React maduro           |
 | Frontend HTTP client                  | Axios (mantido)                        | Já em uso, interceptors prontos                             |
 | Frontend DI                           | Factory functions (sem container lib)  | Simples, sem overhead de lib de DI para o frontend          |
 | Services sub-fields (cronograma etc.) | JSONB columns no PostgreSQL            | Preserva flexibilidade sem criar 6 tabelas extras           |
+| @manager/domain no Deno               | `_shared/domain/` — path relativo      | Supabase Edge Runtime isola a função; symlinks externos falham; _shared/ está dentro do sandbox |

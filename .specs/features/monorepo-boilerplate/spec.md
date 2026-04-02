@@ -6,11 +6,12 @@ O repositório atual possui dois apps separados (`manager-api` e `manager-front`
 
 ## Goals
 
-- [ ] Monorepo Turborepo funcional com build/dev/lint/test unificados
-- [ ] Clean Architecture implementada em api e web — domínio testável e independente de framework
-- [ ] CRUD completo de Users e Services com autenticação JWT end-to-end
-- [ ] PostgreSQL via TypeORM no backend com migrations e seeds
-- [ ] Deploy automatizado via GitHub Actions → Railway (api) + Vercel (web)
+- [x] Monorepo Turborepo funcional com build/dev/lint/test unificados
+- [x] Clean Architecture implementada em api e web — domínio testável e independente de framework
+- [x] CRUD completo de Users e Services com autenticação JWT end-to-end
+- [x] Supabase PostgreSQL como banco, com migrations gerenciadas pela Supabase CLI (SQL puro)
+- [x] API deployada como Supabase Edge Function (Hono + Deno)
+- [ ] Deploy automatizado via GitHub Actions → Supabase (api) + Vercel (web) ← pendente configuração de secrets
 
 ## Out of Scope
 
@@ -38,7 +39,8 @@ O repositório atual possui dois apps separados (`manager-api` e `manager-front`
 1. WHEN executo `npm run dev` na raiz THEN o sistema SHALL iniciar api e web simultaneamente
 2. WHEN executo `npm run build` na raiz THEN o sistema SHALL buildar api e web com cache Turborepo
 3. WHEN executo `npm run lint` na raiz THEN o sistema SHALL rodar linting em todos os workspaces
-4. WHEN importo de `@manager/domain` em qualquer app THEN o sistema SHALL resolver os tipos corretamente
+4. WHEN importo de `@manager/domain` em `apps/web` THEN o sistema SHALL resolver os tipos via tsconfig alias apontando para `supabase/functions/_shared/domain/`
+5. WHEN a Edge Function importa de `../_shared/domain/` THEN o sistema SHALL encontrar os arquivos sem symlinks
 
 **Independent Test:** `npm run build` na raiz sem erros; `turbo build --dry` mostra pipeline correta.
 
@@ -82,20 +84,20 @@ O repositório atual possui dois apps separados (`manager-api` e `manager-front`
 
 ---
 
-### P1: CRUD Services (Backend — migrado para PostgreSQL) ⭐ MVP
+### P1: CRUD Services (Backend — Supabase PostgreSQL) ⭐ MVP
 
-**User Story:** Como usuário autenticado, quero gerenciar serviços via API com PostgreSQL, para que os dados sejam persistidos relacionalmente.
+**User Story:** Como usuário autenticado, quero gerenciar serviços via API com Supabase PostgreSQL, para que os dados sejam persistidos relacionalmente.
 
 **Why P1:** Migração do DynamoDB para PostgreSQL é core da refatoração de infra.
 
 **Acceptance Criteria:**
 
-1. WHEN executo `npm run migration:run` THEN sistema SHALL criar tabelas `users` e `services` no PostgreSQL
+1. WHEN executo `supabase db push` THEN sistema SHALL criar tabelas `users` e `services` no Supabase PostgreSQL
 2. WHEN acesso qualquer endpoint /services sem token THEN sistema SHALL retornar 401
 3. WHEN envio POST/GET/PATCH/DELETE /services com token válido THEN sistema SHALL funcionar igual ao comportamento anterior
-4. WHEN executo `npm run seed` THEN sistema SHALL popular o banco com dados de exemplo
+4. WHEN executo seed manual (SQL ou script) THEN sistema SHALL popular o banco com dados de exemplo
 
-**Independent Test:** `npm run migration:run` sem erros; CRUD via Swagger funciona com Bearer token.
+**Independent Test:** `supabase db push` sem erros; CRUD via curl/httpie funciona com Bearer token.
 
 ---
 
@@ -155,18 +157,18 @@ O repositório atual possui dois apps separados (`manager-api` e `manager-front`
 
 ### P2: CI/CD GitHub Actions
 
-**User Story:** Como desenvolvedor, quero pipelines automáticas que façam deploy em Railway e Vercel ao fazer push para main, para que o processo de deploy seja confiável e sem intervenção manual.
+**User Story:** Como desenvolvedor, quero pipelines automáticas que façam deploy no Supabase e Vercel ao fazer push para main, para que o processo de deploy seja confiável e sem intervenção manual.
 
 **Why P2:** Essencial para um boilerplate production-ready, mas não bloqueia o desenvolvimento local.
 
 **Acceptance Criteria:**
 
 1. WHEN abro um PR THEN sistema SHALL rodar CI (lint, test, build) e bloquear merge se falhar
-2. WHEN faço push para main THEN sistema SHALL fazer deploy da api para Railway
-3. WHEN faço push para main THEN sistema SHALL fazer deploy do web para Vercel
-4. WHEN deploy da api tem sucesso THEN sistema SHALL executar migrations automaticamente
+2. WHEN faço push para main com mudanças em `supabase/**` THEN sistema SHALL rodar `supabase db push` antes do deploy
+3. WHEN faço push para main THEN sistema SHALL fazer deploy da api via `supabase functions deploy`
+4. WHEN faço push para main THEN sistema SHALL fazer deploy do web para Vercel
 
-**Independent Test:** Push para main → ambos os deploys completam com sucesso nos dashboards Railway e Vercel.
+**Independent Test:** Push para main → migrations aplicadas + edge function deployada no dashboard Supabase + web no Vercel.
 
 ---
 
@@ -185,8 +187,8 @@ O repositório atual possui dois apps separados (`manager-api` e `manager-front`
 | Requirement ID | Story                            | Phase  | Status  |
 |----------------|----------------------------------|--------|---------|
 | MONO-01        | P1: Turborepo Setup              | Design | Pending |
-| MONO-02        | P1: packages/domain              | Design | Pending |
-| MONO-03        | P1: packages/tsconfig            | Design | Pending |
+| MONO-02        | P1: _shared/domain               | Design | Done    |
+| MONO-03        | P1: packages/tsconfig            | Design | Done    |
 | AUTH-01        | P1: Auth Backend — Register      | Design | Pending |
 | AUTH-02        | P1: Auth Backend — Login         | Design | Pending |
 | AUTH-03        | P1: Auth Backend — Guard         | Design | Pending |
@@ -197,15 +199,15 @@ O repositório atual possui dois apps separados (`manager-api` e `manager-front`
 | SVC-01         | P1: CRUD Services Backend (PG)   | Design | Pending |
 | SVC-02         | P1: CRUD Services Frontend       | Design | Pending |
 | INFRA-01       | P2: GitHub Actions CI            | Design | Pending |
-| INFRA-02       | P2: GitHub Actions CD — Railway  | Design | Pending |
+| INFRA-02       | P2: GitHub Actions CD — Supabase | Design | Pending |
 | INFRA-03       | P2: GitHub Actions CD — Vercel   | Design | Pending |
 
 ---
 
 ## Success Criteria
 
-- [ ] `npm run dev` na raiz inicia api (porta 3001) e web (porta 3000) simultaneamente
+- [ ] `supabase functions serve api` + `npm run dev --workspace=apps/web` inicia api e web localmente
 - [ ] Login com usuário seed funciona end-to-end no browser
 - [ ] CRUD de Services e Users funciona autenticado no browser
-- [ ] `npm run build` na raiz completa sem erros
-- [ ] Push para main dispara deploy automático (Railway + Vercel)
+- [ ] `npm run build` na raiz (packages + web) completa sem erros
+- [ ] Push para main dispara deploy automático (Supabase Edge Function + Vercel)

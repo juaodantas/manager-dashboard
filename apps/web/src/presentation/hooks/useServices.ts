@@ -4,7 +4,12 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { container } from '../../infrastructure/di/container'
 import type { CreateServiceDto, UpdateServiceDto } from '../../application/use-cases/service/service.types'
 
-export function useServices(params?: { status?: string; clienteId?: string }) {
+export function useServices(params?: {
+  status?: string
+  clienteId?: string
+  limit?: number
+  offset?: number
+}) {
   return useQuery({
     queryKey: ['services', params],
     queryFn: () => container.service.getAll(params),

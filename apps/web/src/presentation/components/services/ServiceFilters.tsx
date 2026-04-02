@@ -11,18 +11,17 @@ interface ServiceFiltersProps {
 }
 
 const statusOptions = [
-  { value: StatusServico.ORCAMENTO, label: 'Orçamento' },
-  { value: StatusServico.APROVADO, label: 'Aprovado' },
   { value: StatusServico.EM_ANDAMENTO, label: 'Em Andamento' },
   { value: StatusServico.CONCLUIDO, label: 'Concluído' },
+  { value: StatusServico.PAUSADO, label: 'Pausado' },
   { value: StatusServico.CANCELADO, label: 'Cancelado' },
 ]
 
 const tipoOptions = [
-  { value: TipoServico.INSTALACAO, label: 'Instalação' },
-  { value: TipoServico.MANUTENCAO, label: 'Manutenção' },
+  { value: TipoServico.OBRA_INCENDIO, label: 'Obra Incêndio' },
   { value: TipoServico.CONSULTORIA, label: 'Consultoria' },
-  { value: TipoServico.OUTROS, label: 'Outros' },
+  { value: TipoServico.PROJETO, label: 'Projeto' },
+  { value: TipoServico.MANUTENCAO, label: 'Manutenção' },
 ]
 
 export function ServiceFilters({ status, tipo, onStatusChange, onTipoChange }: ServiceFiltersProps) {

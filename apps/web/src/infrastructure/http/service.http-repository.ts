@@ -6,8 +6,18 @@ import type { CreateServiceDto, UpdateServiceDto } from '../../application/use-c
 export class ServiceHttpRepository implements IServiceRepository {
   constructor(private readonly http: AxiosInstance) {}
 
-  async findAll(params?: { status?: string; clienteId?: string }): Promise<{ servicos: Service[]; count: number }> {
-    const { data } = await this.http.get<{ servicos: Service[]; count: number }>('/services', { params })
+  async findAll(params?: {
+    status?: string
+    clienteId?: string
+    limit?: number
+    offset?: number
+  }): Promise<{ servicos: Service[]; total: number; limit: number; offset: number }> {
+    const { data } = await this.http.get<{
+      servicos: Service[]
+      total: number
+      limit: number
+      offset: number
+    }>('/services', { params })
     return data
   }
 

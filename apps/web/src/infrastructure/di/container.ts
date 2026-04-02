@@ -6,6 +6,7 @@ import { ServiceHttpRepository } from '../http/service.http-repository'
 import { LoginUseCase } from '../../application/use-cases/auth/login.use-case'
 import { RegisterUseCase } from '../../application/use-cases/auth/register.use-case'
 import { LogoutUseCase } from '../../application/use-cases/auth/logout.use-case'
+import { RefreshTokenUseCase } from '../../application/use-cases/auth/refresh-token.use-case'
 import { GetUsersUseCase } from '../../application/use-cases/user/get-users.use-case'
 import { CreateUserUseCase } from '../../application/use-cases/user/create-user.use-case'
 import { UpdateUserUseCase } from '../../application/use-cases/user/update-user.use-case'
@@ -16,9 +17,17 @@ import { UpdateServiceUseCase } from '../../application/use-cases/service/update
 import { DeleteServiceUseCase } from '../../application/use-cases/service/delete-service.use-case'
 
 const tokenStorage = new LocalStorageToken()
-const http = createAxiosInstance(tokenStorage)
 
-const authRepo = new AuthHttpRepository(http)
+// authRepo is created after http to avoid circular dependency.
+// onRefresh is a late-bound closure so authRepo can be referenced before http is fully wired.
+let authRepo: AuthHttpRepository
+
+const http = createAxiosInstance(tokenStorage, () => {
+  const refreshUseCase = new RefreshTokenUseCase(authRepo, tokenStorage)
+  return refreshUseCase.execute()
+})
+
+authRepo = new AuthHttpRepository(http)
 const userRepo = new UserHttpRepository(http)
 const serviceRepo = new ServiceHttpRepository(http)
 
@@ -28,7 +37,8 @@ export const container = {
   auth: {
     login: new LoginUseCase(authRepo, tokenStorage),
     register: new RegisterUseCase(authRepo, tokenStorage),
-    logout: new LogoutUseCase(tokenStorage),
+    logout: new LogoutUseCase(authRepo, tokenStorage),
+    refresh: new RefreshTokenUseCase(authRepo, tokenStorage),
   },
 
   user: new GetUsersUseCase(userRepo),

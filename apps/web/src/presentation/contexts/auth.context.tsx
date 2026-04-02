@@ -9,7 +9,7 @@ interface AuthContextValue {
   loading: boolean
   login: (email: string, password: string) => Promise<void>
   register: (name: string, email: string, password: string) => Promise<void>
-  logout: () => void
+  logout: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -37,8 +37,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     router.push('/')
   }, [router])
 
-  const logout = useCallback(() => {
-    container.auth.logout.execute()
+  const logout = useCallback(async () => {
+    await container.auth.logout.execute()
     setIsAuthenticated(false)
     router.push('/login')
   }, [router])

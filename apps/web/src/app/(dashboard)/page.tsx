@@ -28,14 +28,6 @@ export default function DashboardPage() {
         <StatCard label="Usuários" value={users.length} />
       </div>
 
-      {stats && (
-        <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
-          <h2 className="mb-4 text-lg font-semibold text-gray-800">Receita Total</h2>
-          <p className="text-3xl font-bold text-green-600">
-            {stats.receita_total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-          </p>
-        </div>
-      )}
 
       <div className="flex gap-4">
         <Link
